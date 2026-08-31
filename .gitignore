@@ -1,0 +1,8 @@
+.venv/
+data/*.csv
+__pycache__/
+*.pyc
+.DS_Store
+phase3_dbt/target/
+phase3_dbt/logs/
+phase3_dbt/dbt_packages/

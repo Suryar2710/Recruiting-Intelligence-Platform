@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: recruiting_intel_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: recruiting
+      POSTGRES_PASSWORD: recruiting
+      POSTGRES_DB: recruiting_intel
+    ports:
+      # host:container — expose on 5433 to avoid clashing with a local Postgres on 5432
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recruiting -d recruiting_intel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

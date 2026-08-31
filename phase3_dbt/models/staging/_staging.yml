@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: stg_applicants
+    description: "One row per applicant, typed and normalized from raw.applicants."
+    columns:
+      - name: applicant_id
+        description: "Natural key for an applicant."
+        data_tests: [not_null, unique]
+      - name: source
+        description: "Acquisition channel, lowercased."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['referral', 'job_board', 'linkedin', 'university', 'agency']
+      - name: is_referral
+        data_tests: [not_null]
+
+  - name: stg_requisitions
+    description: "One row per open requisition, typed and normalized from raw.requisitions."
+    columns:
+      - name: req_id
+        data_tests: [not_null, unique]
+      - name: seniority_level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['junior', 'mid', 'senior', 'staff', 'principal']
+      - name: target_time_to_fill_days
+        data_tests: [not_null]
+
+  - name: stg_applications
+    description: "One row per application (candidate x requisition), from raw.applications."
+    columns:
+      - name: application_id
+        data_tests: [not_null, unique]
+      - name: applicant_id
+        data_tests: [not_null]
+      - name: req_id
+        data_tests: [not_null]
+      - name: final_outcome
+        description: "Terminal state of the application."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['hired', 'rejected', 'withdrawn', 'in_progress']
+
+  - name: stg_stage_history
+    description: "One row per stage an application passed through. Grain: application x stage."
+    columns:
+      - name: application_id
+        data_tests: [not_null]
+      - name: stage_name
+        data_tests: [not_null]
+
+  - name: stg_interviews
+    description: "One row per interview, from raw.interviews."
+    columns:
+      - name: interview_id
+        data_tests: [not_null, unique]
+      - name: application_id
+        data_tests: [not_null]
+      - name: feedback_score
+        description: "Interviewer score, 1-5."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4, 5]
+                quote: false
+
+  - name: stg_offers
+    description: "One row per extended offer, from raw.offers."
+    columns:
+      - name: offer_id
+        data_tests: [not_null, unique]
+      - name: application_id
+        data_tests: [not_null]
+      - name: decision
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['accepted', 'declined', 'expired']
+
+  - name: stg_hires
+    description: "One row per hire, from raw.hires."
+    columns:
+      - name: hire_id
+        data_tests: [not_null, unique]
+      - name: offer_id
+        data_tests: [not_null, unique]

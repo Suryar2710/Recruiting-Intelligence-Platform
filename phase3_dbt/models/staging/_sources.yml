@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw landing tables loaded 1:1 from the Phase 1 CSVs (see phase2_postgres/load_raw.py)."
+    database: recruiting_intel
+    schema: raw
+    tables:
+      - name: applicants
+      - name: requisitions
+      - name: applications
+      - name: stage_history
+      - name: interviews
+      - name: offers
+      - name: hires

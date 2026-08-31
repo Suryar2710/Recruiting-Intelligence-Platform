@@ -1,0 +1,19 @@
+# Kept inside the project (point dbt at it with DBT_PROFILES_DIR=phase3_dbt) so
+# the project is self-contained. Credentials come from env vars with defaults
+# matching phase2_postgres/docker-compose.yml, so nothing secret is committed.
+recruiting_intel:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('PGHOST', 'localhost') }}"
+      port: "{{ env_var('PGPORT', '5433') | int }}"
+      user: "{{ env_var('PGUSER', 'recruiting') }}"
+      password: "{{ env_var('PGPASSWORD', 'recruiting') }}"
+      dbname: "{{ env_var('PGDATABASE', 'recruiting_intel') }}"
+      # dbt builds models into these schemas (staging/intermediate/marts via
+      # per-layer +schema config). This is the default/landing schema.
+      schema: public
+      threads: 4
+      keepalives_idle: 0
+      connect_timeout: 10

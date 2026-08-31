@@ -1,0 +1,110 @@
+name: data-quality-gate
+
+# Real CI quality gate. On every push/PR it runs the full pipeline:
+#   load raw CSVs -> dbt run -> dbt test -> Great Expectations validation.
+# Every step is a plain `run:` command, so a non-zero exit from ANY step fails
+# the job (GitHub stops the job on the first failed step). When this check is
+# marked required in branch protection, a failure blocks the merge -- it is a
+# blocking gate, not a report-only workflow.
+#
+# Uses a GitHub-hosted Postgres SERVICE CONTAINER (no Docker-in-Docker): the job
+# runs directly on the runner and reaches Postgres over localhost on the mapped
+# port.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: recruiting
+          POSTGRES_PASSWORD: recruiting
+          POSTGRES_DB: recruiting_intel
+        ports:
+          # host:container. The job connects to localhost:5433 (matches the
+          # local profiles.yml / load_raw.py defaults, so no env drift).
+          - 5433:5432
+        # Health check runs inside the container (default port 5432). Steps do
+        # not start until Postgres reports healthy.
+        options: >-
+          --health-cmd "pg_isready -U recruiting -d recruiting_intel"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      # Consumed identically by load_raw.py, dbt (profiles.yml), and
+      # validate_marts.py -- one source of truth for connection config.
+      PGHOST: localhost
+      PGPORT: "5433"
+      PGUSER: recruiting
+      PGPASSWORD: recruiting
+      PGDATABASE: recruiting_intel
+      DBT_PROFILES_DIR: ${{ github.workspace }}/phase3_dbt
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # stable scientific-stack wheels in CI
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Fail early with a clear message if Postgres somehow isn't reachable,
+      # rather than surfacing a confusing error deep in the load step.
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" >/dev/null 2>&1; then
+              echo "Postgres is ready."; exit 0
+            fi
+            echo "waiting for postgres ($i)..."; sleep 2
+          done
+          echo "Postgres did not become ready in time." >&2; exit 1
+
+      # --- generate synthetic data (smaller scale keeps CI fast) --------------
+      # CI regenerates data so it never depends on large CSVs being committed.
+      - name: Generate synthetic data
+        run: python phase1_generate_data/generate.py --scale 0.25
+
+      # --- load raw CSVs into Postgres ----------------------------------------
+      - name: Load raw layer (phase2_postgres/load_raw.py)
+        run: python phase2_postgres/load_raw.py
+
+      # --- dbt: install deps, build models, run tests -------------------------
+      - name: dbt deps
+        working-directory: phase3_dbt
+        run: dbt deps
+
+      - name: dbt run
+        working-directory: phase3_dbt
+        run: dbt run
+
+      - name: dbt test
+        working-directory: phase3_dbt
+        run: dbt test
+
+      # --- Great Expectations validation of the mart layer --------------------
+      # Exits non-zero if any expectation fails, which fails the job.
+      - name: Great Expectations mart validation
+        run: python phase4_data_quality/validate_marts.py

@@ -1,0 +1,157 @@
+version: 2
+
+models:
+  # ------------------------------------------------------------------ dims ---
+  - name: dim_applicant
+    description: "One row per applicant. Conformed candidate dimension."
+    columns:
+      - name: applicant_key
+        description: "Surrogate PK."
+        data_tests: [not_null, unique]
+      - name: applicant_id
+        description: "Natural key."
+        data_tests: [not_null, unique]
+
+  - name: dim_requisition
+    description: "One row per requisition. Conformed role dimension."
+    columns:
+      - name: requisition_key
+        description: "Surrogate PK."
+        data_tests: [not_null, unique]
+      - name: req_id
+        data_tests: [not_null, unique]
+      - name: seniority_level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['junior', 'mid', 'senior', 'staff', 'principal']
+
+  - name: dim_recruiter
+    description: "One row per recruiter (derived from requisitions)."
+    columns:
+      - name: recruiter_key
+        description: "Surrogate PK."
+        data_tests: [not_null, unique]
+      - name: recruiter_id
+        data_tests: [not_null, unique]
+
+  - name: dim_date
+    description: "One row per calendar day across the fact date range."
+    columns:
+      - name: date_key
+        description: "Integer YYYYMMDD surrogate PK."
+        data_tests: [not_null, unique]
+      - name: date_day
+        data_tests: [not_null, unique]
+
+  # ------------------------------------------------------------------ facts --
+  - name: fact_applications
+    description: "One row per application. Central fact for candidate-level analysis."
+    columns:
+      - name: application_id
+        description: "PK: natural key of the application."
+        data_tests: [not_null, unique]
+      # foreign keys -> dimensions
+      - name: applicant_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_applicant')
+                field: applicant_key
+      - name: requisition_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_requisition')
+                field: requisition_key
+      - name: recruiter_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_recruiter')
+                field: recruiter_key
+      - name: applied_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: final_outcome
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['hired', 'rejected', 'withdrawn', 'in_progress']
+
+  - name: fact_offers
+    description: "One row per offer. Fact for offer-economics analysis."
+    columns:
+      - name: offer_id
+        description: "PK: natural key of the offer."
+        data_tests: [not_null, unique]
+      - name: application_id
+        description: "FK to fact_applications (offer belongs to one application)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fact_applications')
+                field: application_id
+      - name: requisition_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_requisition')
+                field: requisition_key
+      - name: recruiter_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_recruiter')
+                field: recruiter_key
+      - name: offer_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
+      - name: decision
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['accepted', 'declined', 'expired']
+
+  - name: fact_requisitions
+    description: "One row per requisition. Fact for requisition-level / bottleneck analysis."
+    columns:
+      - name: req_id
+        description: "PK: natural key of the requisition."
+        data_tests: [not_null, unique]
+      - name: requisition_key
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('dim_requisition')
+                field: requisition_key
+      - name: recruiter_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_recruiter')
+                field: recruiter_key
+      - name: opened_date_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_key
