@@ -27,6 +27,8 @@ from pydantic import BaseModel
 
 import sqlalchemy as sa
 
+import recommendations as rec
+
 
 # --------------------------------------------------------------------------- #
 # Config
@@ -106,6 +108,13 @@ def _predict_one(model_key: str, features_df: pd.DataFrame) -> float:
 # --------------------------------------------------------------------------- #
 # Response schemas
 # --------------------------------------------------------------------------- #
+class Recommendation(BaseModel):
+    risk_band: str            # low | elevated | high
+    recommendation: str       # primary suggested action
+    rationale: list[str]      # plain-language signals that drove it
+    is_heuristic: bool        # honesty flag: rule-based, not a second ML model
+
+
 class ReqAtRisk(BaseModel):
     req_id: str
     department: str
@@ -115,12 +124,14 @@ class ReqAtRisk(BaseModel):
     target_time_to_fill_days: int
     recruiter_concurrent_open_reqs: int
     fill_risk_score: float
+    recommended_action: Recommendation
 
 
 class DropoutRiskResponse(BaseModel):
     application_id: str
     dropout_risk_score: float
     features: dict
+    recommended_action: Recommendation
 
 
 class DeclineRiskResponse(BaseModel):
@@ -128,6 +139,7 @@ class DeclineRiskResponse(BaseModel):
     application_id: str
     decline_risk_score: float
     features: dict
+    recommended_action: Recommendation
 
 
 class KPISummary(BaseModel):
@@ -189,10 +201,17 @@ def requisitions_at_risk(limit: int = 20):
     df = df.sort_values("fill_risk_score", ascending=False).head(limit)
     df["is_niche_location"] = df["is_niche_location"].astype(bool)
 
-    return [
-        ReqAtRisk(**{k: _coerce_serializable(v) for k, v in row.items()})
-        for _, row in df.iterrows()
-    ]
+    results = []
+    for _, row in df.iterrows():
+        payload = {k: _coerce_serializable(v) for k, v in row.items()}
+        payload["recommended_action"] = rec.time_to_fill_action(
+            payload["fill_risk_score"],
+            is_niche_location=payload["is_niche_location"],
+            seniority_level=payload["seniority_level"],
+            recruiter_concurrent_open_reqs=payload["recruiter_concurrent_open_reqs"],
+        )
+        results.append(ReqAtRisk(**payload))
+    return results
 
 
 @app.get("/applications/{application_id}/dropout-risk", response_model=DropoutRiskResponse)
@@ -216,11 +235,19 @@ def application_dropout_risk(application_id: str):
 
     X = df[feat_cols].copy()
     score = _predict_one("drop_off_risk", X)
+    feats = {k: _coerce_serializable(df.iloc[0][k]) for k in feat_cols}
+
+    action = rec.dropout_action(
+        score,
+        max_stage_dwell_days=feats.get("max_stage_dwell_days"),
+        interview_rounds_completed=feats.get("interview_rounds_completed"),
+    )
 
     return DropoutRiskResponse(
         application_id=application_id,
         dropout_risk_score=score,
-        features={k: _coerce_serializable(df.iloc[0][k]) for k in feat_cols},
+        features=feats,
+        recommended_action=action,
     )
 
 
@@ -248,12 +275,20 @@ def offer_decline_risk(offer_id: str):
 
     X = df[feat_cols].copy()
     score = _predict_one("offer_decline_risk", X)
+    feats = {k: _coerce_serializable(df.iloc[0][k]) for k in feat_cols}
+
+    action = rec.offer_decline_action(
+        score,
+        offer_to_band_ratio=feats.get("offer_to_band_ratio"),
+        referral_flag=feats.get("referral_flag"),
+    )
 
     return DeclineRiskResponse(
         offer_id=offer_id,
         application_id=str(df.iloc[0]["application_id"]),
         decline_risk_score=score,
-        features={k: _coerce_serializable(df.iloc[0][k]) for k in feat_cols},
+        features=feats,
+        recommended_action=action,
     )
 
 
