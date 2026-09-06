@@ -1,8 +1,15 @@
-# Consolidated project requirements (used by CI).
-# Pinned loosely to the versions verified locally on this project.
+# Consolidated project requirements (used by CI and the Docker image).
+# Canonical environment: Python 3.11 + numpy 1.26.4 (what Docker and CI run).
+# numpy is pinned exactly because the synthetic data generator's output depends
+# on the numpy major version even with a fixed seed.
 
 # Phase 1: synthetic data generation
-numpy>=1.26,<2.0
+# numpy is PINNED EXACTLY: the synthetic generator (generate.py) is sensitive to
+# the numpy major version -- the same SEED produces different output under
+# numpy 2.x vs 1.26.x. Python 3.11 + numpy 1.26.4 is the canonical environment
+# (what Docker and CI reproduce), so we lock it to prevent silent drift back to
+# numpy 2.x on a future resolve. See the "Reproducibility" note in model cards.
+numpy==1.26.4
 pandas>=2.0,<3.0
 faker>=25.0
 
@@ -17,3 +24,11 @@ dbt-postgres>=1.8,<2.0
 great_expectations>=0.18,<0.19
 sqlalchemy>=1.4,<2.1
 psycopg2-binary>=2.9
+
+# Phase 6: ML models
+scikit-learn>=1.4
+joblib>=1.3
+
+# Phase 7: API
+fastapi>=0.110
+uvicorn[standard]>=0.29

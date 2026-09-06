@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: mart_ml_features
+    description: >
+      One row per application. Single feature table for the three Phase 6 models
+      (time-to-fill risk, candidate drop-off, offer decline). Joins candidate,
+      process, requisition, and offer features to three label columns. Offer
+      features and offer/time-to-fill labels are intentionally null for
+      applications that did not reach the relevant funnel stage.
+    data_tests:
+      # offer-decline label present iff the application reached the offer stage
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(label_offer_declined is not null) = reached_offer_stage"
+      # offer features present iff the application reached the offer stage
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(offer_to_band_ratio is not null) = reached_offer_stage"
+    columns:
+      - name: application_id
+        description: "PK: one row per application."
+        data_tests: [not_null, unique]
+      - name: candidate_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['referral', 'job_board', 'linkedin', 'university', 'agency']
+      - name: seniority_level
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['junior', 'mid', 'senior', 'staff', 'principal']
+      - name: referral_flag
+        data_tests: [not_null]
+      - name: interview_rounds_completed
+        data_tests: [not_null]
+      - name: recruiter_concurrent_open_reqs
+        data_tests: [not_null]
+      - name: max_stage_dwell_days
+        data_tests: [not_null]
+      - name: reached_offer_stage
+        data_tests: [not_null]
+      # label present for every application
+      - name: label_was_dropped
+        data_tests: [not_null]
+      - name: label_offer_declined
+        description: "Offer-decline label; present iff reached_offer_stage (see model-level tests)."

@@ -1,0 +1,71 @@
+# Root compose: clone the repo and `docker compose up` gets a working API with
+# data already loaded. Three services:
+#   postgres  - the warehouse (same config as phase2_postgres/docker-compose.yml)
+#   pipeline  - one-shot ETL + model training; runs to completion then exits
+#   api       - FastAPI service; starts only AFTER pipeline succeeds
+#
+# Data-loading tradeoff (see README): rather than have the API build the
+# warehouse on startup (which conflates serving with ETL and makes the API slow
+# to become healthy), a dedicated one-shot `pipeline` service does the
+# generate -> load -> dbt build -> train work, then exits. The api waits on it
+# via `service_completed_successfully`. This keeps the serving container's
+# concern narrow while still giving a true one-command experience.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: recruiting_intel_pg
+    environment:
+      POSTGRES_USER: recruiting
+      POSTGRES_PASSWORD: recruiting
+      POSTGRES_DB: recruiting_intel
+    ports:
+      - "5433:5432"       # host:container (host 5433 avoids clashing w/ local PG)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U recruiting -d recruiting_intel"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  pipeline:
+    build: .
+    image: recruiting-intel:latest    # built once, reused by api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres                 # service name on the compose network
+      PGPORT: "5432"                   # in-container port (not the host 5433)
+      PGUSER: recruiting
+      PGPASSWORD: recruiting
+      PGDATABASE: recruiting_intel
+      DBT_PROFILES_DIR: /app/phase3_dbt
+      PIPELINE_SCALE: "1.0"            # override to e.g. 0.25 for a faster demo
+    volumes:
+      - models:/app/models             # trained models shared with the api
+    command: ["/app/docker/pipeline_entrypoint.sh"]
+    restart: "no"                      # one-shot job
+
+  api:
+    build: .
+    image: recruiting-intel:latest
+    depends_on:
+      pipeline:
+        condition: service_completed_successfully   # wait for setup to finish
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: recruiting
+      PGPASSWORD: recruiting
+      PGDATABASE: recruiting_intel
+    volumes:
+      - models:/app/models             # read models the pipeline wrote
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "phase7_api"]
+
+volumes:
+  pgdata:
+  models:
