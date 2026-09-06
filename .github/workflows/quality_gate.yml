@@ -82,10 +82,13 @@ jobs:
           done
           echo "Postgres did not become ready in time." >&2; exit 1
 
-      # --- generate synthetic data (smaller scale keeps CI fast) --------------
-      # CI regenerates data so it never depends on large CSVs being committed.
+      # --- generate synthetic data --------------------------------------------
+      # Full scale (1.0) so CI reproduces the CANONICAL dataset exactly. CI runs
+      # Python 3.11 with numpy pinned to 1.26.4 (the canonical environment), so
+      # this deterministically yields the locked dataset. CI regenerates data so
+      # it never depends on large CSVs being committed.
       - name: Generate synthetic data
-        run: python phase1_generate_data/generate.py --scale 0.25
+        run: python phase1_generate_data/generate.py --scale 1.0
 
       # --- load raw CSVs into Postgres ----------------------------------------
       - name: Load raw layer (phase2_postgres/load_raw.py)
@@ -103,6 +106,21 @@ jobs:
       - name: dbt test
         working-directory: phase3_dbt
         run: dbt test
+
+      # --- reproducibility assertion ------------------------------------------
+      # Confirms the canonical environment reproduces the LOCKED dataset exactly.
+      # The full-scale generator on Python 3.11 / numpy 1.26.4 must yield 10,836
+      # hires. If a dependency ever drifts (e.g. numpy 2.x), this fails loudly.
+      - name: Assert canonical hire count (10,836)
+        run: |
+          HIRES=$(PGPASSWORD=$PGPASSWORD psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -tAc \
+            "select count(*) from marts.fact_applications where final_outcome = 'hired'")
+          echo "hired applications = $HIRES"
+          if [ "$HIRES" != "10836" ]; then
+            echo "::error::Expected 10836 hires (canonical), got $HIRES -- environment drift?" >&2
+            exit 1
+          fi
+          echo "Canonical dataset reproduced: 10,836 hires."
 
       # --- Great Expectations validation of the mart layer --------------------
       # Exits non-zero if any expectation fails, which fails the job.
