@@ -28,5 +28,7 @@ ENV DBT_PROFILES_DIR=/app/phase3_dbt
 RUN chmod +x /app/docker/pipeline_entrypoint.sh
 
 # Default command is the API; the pipeline service overrides it in compose.
+# Bind to $PORT if the platform injects one (Render/Railway do), else 8000.
+# Shell form so $PORT expands at runtime.
 EXPOSE 8000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--app-dir", "phase7_api"]
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000} --app-dir phase7_api

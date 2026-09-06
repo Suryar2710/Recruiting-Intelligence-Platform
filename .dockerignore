@@ -7,5 +7,7 @@ data/*.csv
 phase3_dbt/target/
 phase3_dbt/logs/
 phase3_dbt/dbt_packages/
-models/*.joblib
+# NOTE: models/*.joblib are intentionally NOT excluded -- the committed canonical
+# models must be baked into the image so the deployed web service (which does not
+# share a filesystem with the one-shot pipeline job on Render) has them at startup.
 *.md

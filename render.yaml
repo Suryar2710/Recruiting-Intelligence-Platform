@@ -1,0 +1,74 @@
+# Render Blueprint: one-click deploy of the Recruiting Intelligence Platform.
+#
+# Architecture mirrors the local docker-compose (Phase 8), adapted to Render's
+# managed primitives:
+#   1. a managed Postgres (the warehouse)
+#   2. a one-shot Job that builds the warehouse in that Postgres
+#      (generate -> load -> dbt build -> train models)
+#   3. a web service (FastAPI) that serves predictions, reading the marts from
+#      Postgres and the committed models/*.joblib baked into the image.
+#
+# All three reuse the SAME Dockerfile from Phase 8 (no separate build config).
+# Connection env vars (PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE) are wired from
+# the managed database via `fromDatabase`, matching what load_raw.py, dbt, and
+# the API already read.
+#
+# To deploy: push this file, then in the Render dashboard choose
+# "New +" -> "Blueprint" -> pick this repo. Render provisions everything.
+# Free tier notes: the web service sleeps on idle (first request after idle is
+# slow), and the free managed Postgres expires after ~90 days -- fine for a
+# portfolio demo, called out in the README.
+
+databases:
+  - name: recruiting-intel-db
+    plan: free
+    databaseName: recruiting_intel
+    user: recruiting
+
+services:
+  # --- one-shot warehouse build --------------------------------------------
+  # Runs the pipeline entrypoint against the managed Postgres. Idempotent: on a
+  # redeploy where the marts already exist, it skips the rebuild.
+  - type: job
+    name: recruiting-intel-pipeline
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerCommand: /app/docker/pipeline_entrypoint.sh
+    envVars:
+      - key: PGHOST
+        fromDatabase: { name: recruiting-intel-db, property: host }
+      - key: PGPORT
+        fromDatabase: { name: recruiting-intel-db, property: port }
+      - key: PGUSER
+        fromDatabase: { name: recruiting-intel-db, property: user }
+      - key: PGPASSWORD
+        fromDatabase: { name: recruiting-intel-db, property: password }
+      - key: PGDATABASE
+        fromDatabase: { name: recruiting-intel-db, property: database }
+      - key: DBT_PROFILES_DIR
+        value: /app/phase3_dbt
+      # Smaller scale keeps the free-tier build within time/memory limits while
+      # preserving every embedded signal. (Full scale runs locally / in CI.)
+      - key: PIPELINE_SCALE
+        value: "0.25"
+
+  # --- FastAPI web service --------------------------------------------------
+  - type: web
+    name: recruiting-intel-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    # default Dockerfile CMD serves uvicorn on $PORT (Render injects it)
+    healthCheckPath: /docs
+    envVars:
+      - key: PGHOST
+        fromDatabase: { name: recruiting-intel-db, property: host }
+      - key: PGPORT
+        fromDatabase: { name: recruiting-intel-db, property: port }
+      - key: PGUSER
+        fromDatabase: { name: recruiting-intel-db, property: user }
+      - key: PGPASSWORD
+        fromDatabase: { name: recruiting-intel-db, property: password }
+      - key: PGDATABASE
+        fromDatabase: { name: recruiting-intel-db, property: database }
