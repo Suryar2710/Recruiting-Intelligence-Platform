@@ -113,6 +113,17 @@ from the model's own top feature importances (a transparent heuristic, flagged
 returns *"Offer is below 90% of band midpoint… consider increasing the offer or
 emphasizing non-salary value."*
 
+**What you'll see in the live demo** (verified end-to-end against the deployed API):
+
+- **Requisition fill-risk** — the ranked table clusters niche-location reqs at
+  high risk (**0.75–0.95**) and non-niche reqs at low risk (**0.26–0.32**),
+  exactly matching the embedded signal.
+- **Candidate drop-off** (`APN0000001`) — **20.8% → LOW RISK → "no action
+  needed"**, with the recommendation explicitly disclosed as a heuristic.
+- **Offer decline** (`OFF0000001`) — **43.3% → ELEVATED RISK** → a specific,
+  bulleted recommendation (offer-profile + non-referral rationale), correctly
+  computed without `days_to_respond`.
+
 **Engineering notes worth calling out:**
 - **Leakage discipline per model.** The time-to-fill model trains *only* on
   requisition features known when a req opens (it must score still-open reqs);
