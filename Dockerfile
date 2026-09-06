@@ -24,8 +24,9 @@ COPY . .
 # dbt reads its profile from the project dir (env vars supply the connection).
 ENV DBT_PROFILES_DIR=/app/phase3_dbt
 
-# The pipeline entrypoint script performs the one-time setup.
-RUN chmod +x /app/docker/pipeline_entrypoint.sh
+# Entrypoint scripts: pipeline_entrypoint.sh (local docker-compose one-shot job)
+# and web_entrypoint.sh (cloud/Render web service that builds-if-empty then serves).
+RUN chmod +x /app/docker/pipeline_entrypoint.sh /app/docker/web_entrypoint.sh
 
 # Default command is the API; the pipeline service overrides it in compose.
 # Bind to $PORT if the platform injects one (Render/Railway do), else 8000.

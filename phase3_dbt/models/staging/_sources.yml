@@ -3,7 +3,12 @@ version: 2
 sources:
   - name: raw
     description: "Raw landing tables loaded 1:1 from the Phase 1 CSVs (see phase2_postgres/load_raw.py)."
-    database: recruiting_intel
+    # Resolve to whatever database the active dbt target connects to, rather than
+    # hardcoding a name. This keeps the pipeline portable: 'recruiting_intel'
+    # locally, but Render's managed database name in a cloud deploy. Hardcoding
+    # caused a "cross-database references are not implemented" failure when the
+    # deployed DB name differed.
+    database: "{{ target.database }}"
     schema: raw
     tables:
       - name: applicants
